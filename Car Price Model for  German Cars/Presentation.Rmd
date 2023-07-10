@@ -1,0 +1,354 @@
+---
+title: "Stat 447 Presentation"
+output: 
+  powerpoint_presentation:
+    slide_level: 3
+---
+
+```{r setup, warning=FALSE, message=FALSE, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, cache=TRUE, warning=FALSE, message=FALSE)
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+#Import Packages
+suppressWarnings({
+suppressMessages(library(tidyr))
+suppressMessages(library(dplyr))
+suppressMessages(library(stringr))
+suppressMessages(library(reshape2))
+suppressMessages(library(gdata))
+suppressMessages(library(lattice))
+suppressMessages(library(data.table))
+suppressMessages(library(ggplot2))
+suppressMessages(library(ggridges))
+suppressMessages(library(treemapify))
+suppressMessages(library(leaps))
+suppressMessages(library(lmtest))
+suppressMessages(library(MASS))
+suppressMessages(library(faraway))
+suppressMessages(library(scales))
+})
+#Import Data
+audi = read.csv("Data/audi.csv")
+bmw = read.csv("Data/bmw.csv")
+mercedes = read.csv("Data/mercedes_benz.csv")
+porsche = read.csv("Data/porsche.csv")
+volkswagen = read.csv("Data/volkswagen.csv")
+car.ori = rbind(audi,bmw, mercedes, porsche, volkswagen)
+car = car.ori
+
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+#Data Cleaning Function
+car.clean = function(car) {
+car[,3] = as.numeric(str_remove(substring(car[,3], 2),","))
+car[,4] = as.numeric(str_remove(str_remove(car[,4],",")," mi."))
+car = na.omit(car)
+car.col.2 = car[,2]
+car.col.2 = as.data.frame(car.col.2)
+car.col.2.temp = car.col.2 %>%
+    mutate(Year = str_extract(car.col.2, "^[^\\s]+"),
+           Brand = str_extract(car.col.2, "[\\s]+([^\\s]+)"),
+           Make = str_remove(car.col.2, '\\w+\\s\\w+\\s')) %>%
+    dplyr::select(-car.col.2)
+car = cbind(car.col.2.temp,car)
+car = car[,-c(4,5)] 
+car$Brand = trim(car$Brand)
+car
+}
+```
+
+### Data Description
+Formerly, the data existed separated by brand. After data manipulation, the dataset has 15,086 observations with 6 predictors.
+
+The data in this project includes a number of predictors, both categorical and numerical.
+
+* Categorical Predictors: Brand, Make
+
+* Numerical Predictors: Year, Price, Mileage, Age
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+#Audi
+audi.clean = car.clean(audi)
+audi.clean <- transform(audi.clean, Type = ifelse(grepl("Premium", Make), "Premium", ifelse(grepl("Prestige", Make), "Prestige", "Other")))
+#BMW
+bmw.clean = car.clean(bmw)
+bmw.clean <- transform(bmw.clean, Type = ifelse(grepl("xDrive", Make), "xDrive", ifelse(grepl("sDrive", Make), "sDrive", "Other")))
+bmw.clean <- transform(bmw.clean, Style = ifelse(grepl("X3", Make), "X3", ifelse(grepl("X4", Make), "X4",  ifelse(grepl("X5", Make), "X5", ifelse(grepl("X6", Make), "X6",  ifelse(grepl("X7", Make), "X7", "Other"))))))
+#MB
+mercedes.clean = car.clean(mercedes)
+mercedes.clean <- transform(mercedes.clean, Type = ifelse(grepl("4MATIC", Make), "4MATIC", "Other"))
+mercedes.clean <- transform(mercedes.clean, Drive = ifelse(grepl("Base", Make), "Base", "Not Base"))
+mercedes.clean <- transform(mercedes.clean, Style = ifelse(grepl("S-", Make) | grepl("-S", Make), "S class", ifelse(grepl("C-", Make) | grepl("-C", Make), "C class", ifelse(grepl("E-", Make) | grepl("-E", Make), "E class", ifelse(grepl("G-", Make) | grepl("-G", Make), "G class", "Other")))))
+#Porsche
+porsche.clean = car.clean(porsche)
+porsche.clean <- transform(porsche.clean, Style = ifelse(grepl("Cayenne", Make), "Cayenne", ifelse(grepl("Panamera", Make), "Panamera", ifelse(grepl("911", Make), "911", ifelse(grepl("Carrera", Make), "Carrera", ifelse(grepl("Cayman", Make), "Cayman", ifelse(grepl("Macan", Make), "Macan", ifelse(grepl("Boxster", Make), "Boxster", "Other"))))))))
+#VW
+volkswagen.clean = car.clean(volkswagen)
+volkswagen.clean <- transform(volkswagen.clean, Style = ifelse(grepl("Atlas", Make), "Atlas", ifelse(grepl("Beetle", Make), "Beetle", ifelse(grepl("Golf", Make), "Golf", ifelse(grepl("Jetta", Make), "Jetta", ifelse(grepl("Touareg", Make), "Touareg", ifelse(grepl("Passat", Make), "Passat", ifelse(grepl("Tiguan", Make), "Tiguan", "Other"))))))))
+#All
+all.clean = car.clean(car)
+
+```
+
+```{r warn = -1, echo=FALSE}
+#All
+all.clean <-transform(all.clean,Years_Old = 2022 - as.numeric(Year))
+#Audi
+audi.clean <-transform(audi.clean,Years_Old = 2022 - as.numeric(Year))
+audi.clean <- transform(audi.clean, Type = ifelse(grepl("Premium Plus", Make), "Premium_Plus", ifelse(grepl("Premium", Make), "Premium", ifelse(grepl("Prestige", Make), "Prestige", "Other"))))
+audi.clean <- transform(audi.clean, Class = toupper(substr(audi.clean$Make[], 1,1)))
+#BMW
+bmw.clean <-transform(bmw.clean,Years_Old = 2022 - as.numeric(Year))
+#MB
+mercedes.clean <-transform(mercedes.clean,Years_Old = 2022 - as.numeric(Year))
+#Porsche
+porsche.clean <-transform(porsche.clean,Years_Old = 2022 - as.numeric(Year))
+#VW
+volkswagen.clean <-transform(volkswagen.clean,Years_Old = 2022 - as.numeric(Year))
+```
+
+
+### Price Change Across Mileage and Brand
+::::::::: {.columns}
+::: {.column}
+- Exponential decay in cost as mileage increases with all car brands. 
+- Volkswagen is the cheapest, has small price range compared to other brands
+- Porsche is the most expensive initially, but loses value the fastest.
+:::
+::: {.column}
+```{r, fig.width=6, fig.height=4}
+#All Graph
+ggplot(all.clean,aes(x=Mileage,y=Price)) +
+  geom_point(aes(color=Brand)) +
+  geom_point(aes(color=Brand))+facet_wrap(~Brand) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  scale_y_continuous(labels = dollar) +
+  scale_x_continuous(labels = label_comma()) +
+  ggtitle("Price by Brand and Mileage")
+```
+:::
+:::::::::
+
+
+### Audi Price Analysis
+::::::::: {.columns}
+::: {.column}
+- Right-skews for A, R, and T class cars, left-skew for E class cars.
+- S-class has a number of relative peaks, indicating clusters of around those figures.
+- R-class cars have the most variability as the data is almost bimodal with two different peaks.
+:::
+::: {.column}
+```{r, fig.width=6, fig.height=4}
+#Audi Plot
+ggplot(audi.clean, aes(x=Price, color=Class)) +
+  geom_density(size=2) +
+  scale_y_continuous(labels = label_comma()) +
+  scale_x_continuous(labels = dollar) +
+  ggtitle("Audi: Density by Price and Class")
+```
+:::
+:::::::::
+
+### BMW Mileage Analysis
+::::::::: {.columns}
+::: {.column}
+- X7's have the lowest average mileage.
+- However, X7's also have the lowest average age. 
+- Low average mileage alone cannot predict price.
+:::
+::: {.column}
+```{r, fig.width=6, fig.height=4}
+bmwDataTable = as.data.table(bmw.clean)
+bmwDataTable<-bmwDataTable[,.(Mileage =mean(Mileage), Years_Old =mean(Years_Old)), by=.(Style)]
+#KEEP
+ggplot(bmwDataTable, aes(x=Style, y=Mileage)) + 
+  geom_point(size=3) + 
+  geom_segment(aes(x=Style, 
+                   xend=Style, 
+                   y=0, 
+                   yend=Mileage)) + 
+  ggtitle("BMW: Average Mileage by Style") +
+  scale_y_continuous(labels = label_comma()) +
+  theme(axis.text.x = element_text(angle=65, vjust=0.6))
+```
+:::
+:::::::::
+
+### Mercedes Benz Price Analysis
+::::::::: {.columns}
+::: {.column}
+- G class is by far the most expensive, followed by the S class and E class.
+- Price of G class base models are significantly higher than that of other models.
+- We take this into account for our Mercedes-specific pricing model.
+:::
+::: {.column}
+```{r, fig.width=6, fig.height=4}
+library(ggfortify)
+library(ggthemes)
+library(data.table)
+mercedesDataTable3 = as.data.table(mercedes.clean)
+mercedesDataTable3<-mercedesDataTable3[,.(Price =mean(Price)), by=.(Drive, Style)]
+
+ggplot(mercedesDataTable3, aes(x = Style, y = Price, fill = Drive)) +   
+                              geom_bar(stat = "identity", width = .6) + 
+                              coord_flip() +
+                              ggtitle("Mercedes-Benz: Average Price by Drive Type and Style Class") +
+                              scale_y_continuous(labels = dollar) +
+                              theme(plot.title = element_text(hjust = .5))
+```
+:::
+:::::::::
+
+### Porsche Price Analysis
+::::::::: {.columns}
+::: {.column}
+- 911 tends to be significantly more expensive than all other models
+- Cayenne and Macan are relatively comparable
+- Cayman and Panamera are similarly priced
+- Boxster is the cheapest style
+:::
+::: {.column}
+```{r, fig.width=6, fig.height=4}
+porscheDataTable = as.data.table(porsche.clean)
+#head(porsche.clean)
+porscheDataTable<-porscheDataTable[,.(Price =mean(Price)), by=.(Style, Year)]
+#KEEP
+porscheDataTable2<-porscheDataTable[,.(Price =mean(Price)), by=.(Style)]
+#porscheDataTable2 
+ggplot(porscheDataTable2, aes(area = Price, fill = Style, label = Style)) +
+  geom_treemap() +
+  geom_treemap_text(colour = "white", place = "centre",
+                    grow = TRUE) +
+  ggtitle("Porsche: Treemap of Price by Model Style")
+```
+:::
+:::::::::
+
+### Volkswagen Price Analysis
+::::::::: {.columns}
+::: {.column}
+- Atlas' tend to lie more on the pricier side, making up most of VW's counts around \$40,000. 
+- Jettas and Tiguans in the middle price range of about \$20,000-30,000.
+- Golf and Beetle fall in bottom third of the price range at > \$20,000.
+:::
+::: {.column}
+```{r, fig.width=6, fig.height=4}
+#KEEP
+theme_set(theme_classic())
+
+ggplot(volkswagen.clean, aes(Price)) +
+  geom_histogram(aes(fill=Style), 
+                   binwidth = 1000, 
+                   col="black") +
+  scale_x_continuous(labels = dollar) +
+  ggtitle("Volkswagen: Count of Price by Model Style")
+```
+:::
+:::::::::
+
+
+### Price Change Across Mileage and Brand
+::::::::: {.columns}
+::: {.column}
+- For the full dataset, there is no strong correlation amongst our predictors (reducing multicolinearity) which may otherwise exist. 
+- Price and Mileage are negatively correlated, while Years_Old and Mileage are positively correlated.
+:::
+::: {.column}
+```{r, fig.width=6, fig.height=6}
+library(corrplot)
+
+#MAKE FANCY
+#head(all.clean)
+groups = unique(all.clean$Brand) 
+#groups
+brandsNumeric <- as.numeric(factor(all.clean$Brand, levels=groups)) 
+all.cor = cor(all.clean[,c("Years_Old","Mileage", "Price")])
+corrplot(all.cor, method="color")
+#cor(all.clean[,c("Years_Old","Mileage", "Price")], brandsNumeric)
+```
+:::
+:::::::::
+
+### Price Change Across Mileage and Brand
+```{r, fig.width=6, fig.height=4, warning=FALSE}
+library(knitr)
+# Fit full model with all predictors 
+all.model = lm(Price ~Years_Old + Brand + Mileage, data=all.clean)
+#summary(all.model)
+# Fit full model with interaction
+all.model.interactions = lm(Price ~Years_Old + Brand + Mileage + Mileage*Years_Old + Brand*Mileage, data=all.clean)
+#all.model.interactions$coefficients
+sstable = anova(lm(Price ~Years_Old + Brand + Mileage + Mileage*Years_Old + Brand*Mileage, data=all.clean))
+kable(sstable, digits = 3) # the digits argument controls rounding
+```
+
+
+
+```{r warn = -1}
+# Unusual Observations
+# Leverage Points
+all.leverages = lm.influence(all.model.interactions)$hat
+n = dim(all.clean[,c(-1,-16)])[1]; # Sample size
+p = length(variable.names(all.model.interactions))
+all.model.interactions.leverages.high = all.leverages[all.leverages>2*p/n]
+# Calculate the IQR for the dependent variable 
+IQR_y = IQR(all.clean$Price)
+#Define a range with its lower limit being (Q1 - IQR) and upper limit being (Q3 + IQR) 
+QT1_y = quantile(all.clean$Price,0.25)
+QT3_y = quantile(all.clean$Price,0.75)
+lower_lim_y = QT1_y - IQR_y
+upper_lim_y = QT3_y + IQR_y
+vector_lim_y = c(lower_lim_y,upper_lim_y)
+# Extract observations with high leverage points from the original data frame 
+all.highlev = all.clean[,c(-1,-16)][all.leverages>2*p/n,]
+# Select only the observations with leverage points outside the range 
+all.highlev_lower = all.highlev[all.highlev$Price < vector_lim_y[1], ]
+all.highlev_upper = all.highlev[all.highlev$Price > vector_lim_y[2], ]
+all.highlev = rbind(all.highlev_lower,all.highlev_upper)
+# Outliers
+# Computing Studentized Residuals #
+all.resid = rstudent(all.model.interactions); 
+# Critical value WITH Bonferroni correction #
+bonferroni_cv = qt(.05/(2*n), n-p-1) 
+# Sorting the residuals in descending order to find outliers (if any) 
+all.resid.sorted = sort(abs(all.resid), decreasing=TRUE)[1:10]
+birthweight.outliers = all.resid.sorted[abs(all.resid.sorted) > abs(bonferroni_cv)]
+# Influential Points
+all.cooks = cooks.distance(all.model.interactions)
+```
+
+### Model Transformation
+::::::::: {.columns}
+::: {.column}
+```{r, fig.width=6, fig.height=4}
+plot(all.model.interactions, which=1)
+```
+:::
+::: {.column}
+```{r, fig.width=6, fig.height=4}
+all.clean2 = all.clean
+all.clean2$Price.new = log(all.clean2$Price)
+all.model.transformed = lm(Price.new ~ Years_Old + Brand + Mileage + Mileage*Years_Old + Brand*Mileage, data=all.clean2)
+plot(all.model.transformed, which=1)
+```
+:::
+:::::::::
+
+### Brand-Specific Models
+::::::::: {.columns}
+::: {.column}
+- Audi: 9 predictors, 0.8985 adj R-squared
+- BMW: 9 predictors, 0.7476 adj R-squared
+- Mercedes Benz: 14 predictors, 0.6941 adj R-squared
+- Porsche: 5 predictors, 0.8611 adj R-squared
+- VW: 5 predictors, 0.8325 adj R-squared 
+:::
+::: {.column}
+- Across all brands, we see this BIC model perform quite well with a high adjusted R-squared values.
+- The models have a very similar construction, following the similar transformation methods from the full model.
+- Overall, we feel confident in our analysis and our ability to predict car prices.
+:::
+:::::::::
+
