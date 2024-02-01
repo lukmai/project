@@ -1,0 +1,177 @@
+---
+title: "Final Project"
+author: "Supanut Wanchai"
+date: "2023-11-22"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(readr)
+default <- as.data.frame(read_csv("Final Data.csv", 
+    col_types = cols(Period = col_date(format = "%d/%m/%Y"))))
+```
+
+```{r}
+plot(as.Date(default[,1], format='%Y-%m-%d'), default[,4], type = "l", ylab = "%NPL to total loan", xlab = "Date")
+```
+
+```{r}
+plot(default[,2], default[,3], xlab = "housing", ylab = "automobile")
+```
+
+```{r}
+par(mfrow = c(1,2))
+hist(default[,2], main = "housing", xlab = "%NPL")
+hist(default[,3], main = "automobile", xlab = "%NPL")
+```
+```{r}
+library(tseries)
+jarque.bera.test(default[,2])
+jarque.bera.test(default[,3])
+```
+Housing is normally distributed but automobile is not.
+
+#transform data
+```{r}
+library(copula)
+## normal distribution
+house_mu <- mean(default[, 2])
+house_sd <- sd(default[, 2])
+default[,5] <- pnorm(default[, 2],house_mu,house_sd)
+
+##pseudo-observation
+default[,6] <- pobs(default[,3])
+```
+
+```{r}
+plot(default[,5], default[,6], xlab = "housing", ylab = "automobile")
+```
+
+
+```{r}
+library(copula)
+Frank <- fitCopula(frankCopula(dim=2), data = default[,5:6], method = "ml")
+Frank
+```
+
+
+```{r}
+Clayton <- fitCopula(claytonCopula(dim=2), data = pobs(default[,2:3]), method = "ml")
+Clayton
+```
+
+```{r}
+Gumbel <- fitCopula(gumbelCopula(dim=2), data = pobs(default[,2:3]), method = "ml")
+Gumbel
+```
+
+
+```{r}
+print("Frank AIC BIC")
+AIC(Frank)
+BIC(Frank)
+print("Clayton AIC BIC")
+AIC(Clayton)
+BIC(Clayton)
+print("Gumbel AIC BIC")
+AIC(Gumbel)
+BIC(Gumbel)
+```
+
+
+
+```{r}
+Normal <- fitCopula(normalCopula(dim=2), data = pobs(default[,2:3]), method = "ml")
+Normal
+print("normal AIC BIC")
+AIC(Normal)
+BIC(Normal)
+```
+
+## Simulation
+```{r}
+frank <- frankCopula(dim = 2, param = coef(Frank))
+fr <- rCopula(42, frank)
+plot(default[,5], default[,6], xlab = "housing", ylab = "automobile", main = "Frank's Copula")
+points(fr[,1],fr[,2],,col='red')
+```
+
+
+```{r}
+clayton <- claytonCopula(dim = 2, param = coef(Clayton))
+cl <- rCopula(42, clayton)
+plot(default[,5], default[,6], xlab = "housing", ylab = "automobile", main = "Clayton's Copula")
+points(cl[,1],cl[,2],,col='red')
+```
+
+
+
+
+```{r}
+gumbel <- gumbelCopula(dim = 2, param = coef(Gumbel))
+gu <- rCopula(42, gumbel)
+plot(default[,5], default[,6], xlab = "housing", ylab = "automobile", main = "Gumbel's Copula")
+points(gu[,1],gu[,2],,col='red')
+```
+
+
+
+```{r}
+normal <- normalCopula(dim = 2, param = coef(Normal))
+nr <- rCopula(42, normal)
+plot(default[,5], default[,6], xlab = "housing", ylab = "automobile" , main = "Normal Copula")
+points(nr[,1],nr[,2],,col='red')
+```
+
+```{r}
+layout(matrix(c(1,2,3,4,5,5), ncol=2, byrow=TRUE), heights=c(2, 2))
+
+par(mai=rep(0.5, 4))
+
+plot(default[,5], default[,6], xlab = "housing", ylab = "automobile" , main = "Normal Copula", xlim = c(0,1), ylim = c(0,1))
+points(nr[,1],nr[,2],col='red')
+
+plot(default[,5], default[,6], xlab = "housing", ylab = "automobile", main = "Clayton Copula", xlim = c(0,1), ylim = c(0,1))
+points(cl[,1],cl[,2],col='red')
+
+plot(default[,5], default[,6], xlab = "housing", ylab = "automobile", main = "Frank Copula", xlim = c(0,1), ylim = c(0,1))
+points(fr[,1],fr[,2],col='red')
+
+plot(default[,5], default[,6], xlab = "housing", ylab = "automobile", main = "Gumbel Copula", xlim = c(0,1), ylim = c(0,1))
+points(gu[,1],gu[,2],col='red')
+
+
+
+par(mai=c(0,0,0,0))
+plot.new()
+legend(x="center", ncol=2,legend=c("Observed","Simulated"),
+       fill=c("Black","red"))
+```
+
+3 papers
+pseudo observation: https://search.r-project.org/CRAN/refmans/copula/html/pobs.html
+copula package: https://cran.r-project.org/web/packages/copula/copula.pdf
+
+```{r}
+linear <- lm(Housing ~ Automobile, data = default)
+summary(linear)
+print("linear AIC BIC")
+AIC(linear)
+BIC(linear)
+```
+```{r}
+predicted_labels <- predict(linear, default)
+rmse <- sqrt(mean((as.vector(predicted_labels) - as.vector(default$Housing))^2))
+rmse
+```
+
+```{r}
+#frank <- frankCopula(dim = 2, param = coef(Frank))
+library(copBasic)
+rmseCOP(default[,5], default[,6], param = coef(Frank) , cop=GLcop)
+```
+
